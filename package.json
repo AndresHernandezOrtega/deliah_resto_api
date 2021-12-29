@@ -2,9 +2,9 @@
   "name": "express_template",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "nodemon src/server.js"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +17,5 @@
     "sequelize": "^6.6.5"
   },
   "devDependencies": {
-    "swagger-jsdoc": "^6.1.0",
-    "swagger-ui-express": "^4.1.6"
   }
 }

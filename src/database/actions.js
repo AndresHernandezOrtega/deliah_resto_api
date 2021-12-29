@@ -1,5 +1,5 @@
-const Sequelize = require('sequelize');
-const database = new Sequelize('mysql://root:password@localhost:3306/deliahresto');
+const { Sequelize } = require('sequelize');
+const database = new Sequelize('mysql://root:andrespipe2.0@localhost:3306/deliahresto');
 
 module.exports.Select = async (query, data) => {
    return await database.query(query, { 

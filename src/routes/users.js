@@ -1,243 +1,112 @@
 const express = require('express');
 const auth = require('../security/auth');
+const authUser = require('../security/user_auth');
 const actions = require('../database/actions');
 
 const router = express.Router();
 
-/**
- * @swagger
- * /users:
- *  get:
- *      tags:
- *      - Users
- *      description: Trae todos los usuarios del sistema
- *      parameters:
- *         - in: header
- *           name: authorization
- *           description: Identificador unico del usuario
- *           schema:
- *             type: string
- *      produces:
- *         - application/json
- *      responses:
- *          200:
- *              description: todos los usurios del sistema
- *              content:
- *                  application/json:   
- *                      schema:
- *                          type: "array"
- *                          items:
- *                              $ref: "#/components/schemas/User"
- */
-router.get('/users', auth.auth, async (req, res)=> {
-    const result = await actions.Select('SELECT * FROM usuarios', {});
-    res.json(result);
+
+router.get('/users', auth.auth, auth.authRol, async (req, res)=> {
+    let result
+    if (req.isAdmin) {
+        result = await actions.Select('SELECT * FROM usuarios', {});
+    } else {
+        result = await actions.Select('SELECT * FROM usuarios WHERE nombreUsuaurio = :userName', { userName: req.user.userName });
+    }
+    res.status(200).json(result)
+    
 });
 
-/**
- * @swagger
- * /user/{id}:
- *  get:
- *      tags:
- *      - Users
- *      description: Trae todos los usuarios del sistema
- *      parameters:
- *         - in: header
- *           name: token
- *           description: Identificador unico del usuario
- *           schema:
- *             type: string
- *         - in: path
- *           name: id
- *           description: Identificador unico del usuario
- *           schema:
- *             type: string
- *      produces:
- *         - application/json
- *      responses:
- *          200:
- *              description: todos los usurios del sistema
- *              content:
- *                  application/json:   
- *                      schema:
- *                           $ref: "#/components/schemas/User"
- */
-router.get('/user/:id', auth.auth, async (req, res)=> {
-    const result = await actions.Select('SELECT * FROM usuarios WHERE id = :id', { id: req.params.id });
-    res.json(result);
-});
 
-/**
- * @swagger
- * /user:
- *  post:
- *      tags:
- *      - Users
- *      description: Ingresa usuarios del sistema
- *      parameters:
- *         - in: header
- *           name: token
- *           description: Identificador unico del usuario
- *           schema:
- *             type: string
- *         - in: body
- *           description: informaicon del usuario del usuario
- *           schema:
- *             $ref: "#/components/schemas/User"
- *      produces:
- *         - application/json
- *      responses:
- *          200:
- *              description: Usuario creado
- *              content:
- *                  application/json:   
- *                      schema:
- *                           $ref: "#/components/schemas/User"
- */
-router.post('/user', async (req, res)=> {
+router.get('/user/:id', auth.auth, auth.authRol, async (req, res)=> {
+    let result
+    if (req.isAdmin) {
+        result = await actions.Select('SELECT * FROM usuarios WHERE id = :id', { id: req.params.id });
+        res.status(200).json(result);
+    }else {
+        res.status(403).json({
+            success: false,
+            message: 'El usuario que esta intentando ingresar no tiene privilegios suficientes',
+            data: {Admin: req.isAdmin, id: req.params.id}
+        });
+    }
+}); 
+
+
+router.post('/user', authUser.authUser, async (req, res)=> {
+    //autenticar campos de usuarios
+    /* Solo se pueden crear usuarios clientes */
     const user = req.body;
+    user.idRole = 2;
     let result;
     user.nombreUsuaurio = user.nombreUsuaurio.toLowerCase();
     result = await actions.Insert(`INSERT INTO usuarios (nombreUsuaurio, nombreCompleto, email, telefono, direccion, contrasena, idRole) 
     VALUES (:nombreUsuaurio, :nombreCompleto, :email, :telefono, :direccion, :contrasena, :idRole)`, user);
     if(result.error) {
-        res.status(500).json(result.message);
+        res.status(500).json({
+            success: false,
+            message: "Error de escritura en la BD o ingreso de datos invalido",
+            data: req.body
+        });
     } else {
-        res.json(result);
+        res.status(200).json({
+            message: "Usuario creado con exito"
+        });
     }    
 });
 
-/**
- * @swagger
- * /user/:id:
- *  put:
- *      tags:
- *      - Users
- *      description: Actualiza usuarios del sistema
- *      parameters:
- *         - in: header
- *           name: token
- *           description: Identificador unico del usuario
- *           schema:
- *             type: string
- *         - in: body
- *           description: informaicion del usuario del usuario
- *           schema:
- *             $ref: "#/components/schemas/User"
- *      produces:
- *         - application/json
- *      responses:
- *          200:
- *              description: Usuario actualizado
- *              content:
- *                  application/json:   
- *                      schema:
- *                           $ref: "#/components/schemas/User"
- */
-router.put('/user/:id', auth.auth, async (req, res)=> {
-    //Code here
-});
 
-/**
- * @swagger
- * /user/:id:
- *  patch:
- *      tags:
- *      - Users
- *      description: Actualiza usuarios del sistema
- *      parameters:
- *         - in: header
- *           name: token
- *           description: Identificador unico del usuario
- *           schema:
- *             type: string
- *         - in: body
- *           description: informaicion del usuario del usuario
- *           schema:
- *             $ref: "#/components/schemas/User"
- *      produces:
- *         - application/json
- *      responses:
- *          200:
- *              description: Usuario actualizado
- *              content:
- *                  application/json:   
- *                      schema:
- *                           $ref: "#/components/schemas/User"
- */
-router.patch('/user/:id', auth.auth, async (req, res)=> {
+router.patch('/user/:id', auth.auth, auth.authRol, authUser.authUserObject, async (req, res)=> { 
+    //comprobar que los campos esten o arrojar errores, poner por defecto los valores de usuario
+    //refactor solo poner en el query las propiedades que estan en el objeto
+    // poner los status
+
     const user = req.body;
-    const result = await actions.Update(`UPDATE usuarios SET email = :email WHERE id = :id`, user);
-    res.json(result);
+    let query_options = req.queries;
+    let query;
+    if (req.isAdmin) {
+        query = `UPDATE usuarios SET ${query_options} WHERE id = ${req.params.id}`;
+    } else {
+        if (req.userId !== req.params.id) {
+            res.status(403).json({
+                success: false,
+                message: 'El usuario que esta intentando ingresar no tiene privilegios suficientes',
+                data: {Admin: req.isAdmin, id: req.params.id}
+            })
+        }
+        query = `UPDATE usuarios SET ${query_options} WHERE id = ${req.params.id}`;
+    }
+    const result = await actions.Update(query, user);
+    res.status(200).json({
+        message: `Se actualizo el usuario con exito`,
+        parameters: user
+    });
 });
 
-/**
- * @swagger
- * /user/:id:
- *  delete:
- *      tags:
- *      - Users
- *      description: Elimina usuarios del sistema
- *      parameters:
- *         - in: header
- *           name: token
- *           description: Identificador unico del usuario
- *           schema:
- *             type: string
- *      produces:
- *         - application/json
- *      responses:
- *          200:
- *              description: Usuario Eliminado
- *              content:
- *                  application/json:   
- *                      schema:
- *                           $ref: "#/components/schemas/User"
- */
-router.delete('/user/:id', auth.auth, async (req, res)=> {
-    //Code here
+
+router.delete('/user/:id', auth.auth, auth.authRol, async (req, res)=> {
+    let result;
+    if (req.isAdmin) {
+        exist = await actions.Select('SELECT * FROM usuarios WHERE id = :id', { id: req.params.id });
+        if (exist.length === 0) {
+            res.status(404).json({
+                success: false,
+                message: `El usuario con el id ${req.params.id} no existe`,
+                data: {id: req.params.id}
+            })
+        }
+        result = await actions.Delete('DELETE FROM usuarios WHERE id = :id', { id: req.params.id });
+        res.status(200).json({
+            message: "El usuario fue eliminado exitosamente",
+            id_user: req.params.id
+        });
+    }else {
+        res.status(403).json({
+            success: false,
+            message: 'El usuario que esta intentando ingresar no tiene privilegios suficientes',
+            data: {Admin: req.isAdmin, id: req.params.id}
+        });
+    }
 });
 
 module.exports = router;
-
-/**
- * @swagger
- * components:
- *   schemas:
- *      User:
- *        type: object
- *        properties:  
- *          id: 
- *              type: integer
- *              description: id del usuario
- *              example: 1  
- *          nombreUsuaurio: 
- *              type: string
- *              description: nombre del usuario
- *              example: 'Wvanegas'
- *          nombreCompleto: 
- *              type: string
- *              description: nombre completo del usuario
- *              example: 'Walter vanegas'
- *          email: 
- *              type: string
- *              description: email del usuario
- *              example: 'Waltervanegas@gmail.com'
- *          telefono: 
- *              type: string
- *              description: telefono del usuario
- *              example: '3007002250'
- *          direccion: 
- *              type: string
- *              description: direccion del usuario
- *              example: 'N/A'
- *          contrasena: 
- *              type: string
- *              description: contraseña del usuario
- *              example: '1234'
- *          idRole: 
- *              type: integer
- *              description: rol del usuario
- *              example: '2'
- * 
-*/
